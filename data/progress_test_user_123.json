@@ -1,0 +1,17 @@
+{
+  "score": {
+    "correct": 3,
+    "total": 3
+  },
+  "answers": {
+    "1": {
+      "correct": true
+    },
+    "2": {
+      "correct": true
+    },
+    "3": {
+      "correct": true
+    }
+  }
+}
