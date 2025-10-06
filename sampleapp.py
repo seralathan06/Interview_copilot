@@ -8,47 +8,28 @@ import io
 import json
 import asyncio
 import threading # For running blocking PyAudio in a separate thread
-import random # For aptitude tutor questions
-import time # For aptitude tutor, though not strictly used in current dummy
+import random
 
-# Import core logic from refactored modules
-from tts_service import OpenAITextToSpeech
-try:
-    from stt_service import OpenAIAudioTranscriber, record_audio_blocking
-except Exception:
-    # Fallback stub implementations when stt_service is not available.
-    # These stubs surface clear runtime errors or return harmless defaults,
-    # allowing the rest of the module to be imported and edited without import errors.
-    class OpenAIAudioTranscriber:
-        async def transcribe_audio_from_bytes(self, data: bytes, filename: str, content_type: str) -> str:
-            raise RuntimeError(
-                "stt_service is not installed or could not be imported. "
-                "Install the stt_service package or provide a local implementation."
-            )
-
-    def record_audio_blocking():
-        # Minimal harmless stub: no frames, default format/channel/rate placeholders.
-        # Replace with real recording logic (e.g., using PyAudio) in production.
-        return [], None, 1, 16000
-from interviewer_logic import InterviewLogic
-from summary_logic import InterviewSummarizer
+# Import core logic from refactored modules - NOW USING GEMINI AND NVIDIA
+from tts_service_nvidia import NvidiaTextToSpeech # Changed to NVIDIA TTS
+from stt_service import OpenAIAudioTranscriber # Keeping OpenAI STT as NVIDIA STT integration is complex
+from interviewer_logic_gemini import InterviewLogicGemini # Changed to Gemini Interviewer Logic
+from summary_logic_gemini import InterviewSummarizerGemini # Changed to Gemini Summarizer
 
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(
-    title="AI Assistant Backend", # Changed title to be more general
-    description="API for AI-powered interviews, aptitude tutoring, and general AI utilities.",
-    version="0.1.0",
+    title="AI Assistant Backend (Gemini & NVIDIA)", # Updated title
+    description="API for AI-powered interviews (Gemini), aptitude tutoring, and general AI utilities (NVIDIA TTS, OpenAI STT).",
+    version="0.2.0",
 )
 
 # --- Interviewer Session Store (for demonstration purposes) ---
-# In a real application, replace this with a proper database or Redis.
-interview_sessions: Dict[str, InterviewLogic] = {}
+interview_sessions: Dict[str, InterviewLogicGemini] = {} # Changed type
 
 # --- Aptitude Tutor User Sessions (for demonstration purposes) ---
-# In a real application, replace this with a proper database or Redis per user
 aptitude_user_sessions = {
     "default_user": {
         "score": {"correct": 0, "total": 0},
@@ -57,21 +38,21 @@ aptitude_user_sessions = {
 }
 
 # --- Pydantic Models for API Request/Response (Interviewer) ---
-
+# These models remain the same as they define the API contract, not the internal AI model.
 class InterviewStartRequest(BaseModel):
     persona_path: str = Field(..., description="Path to the interviewer persona file (e.g., 'personas/ethan.txt')")
     difficulty: str = Field("medium", description="Difficulty of the interview (easy, medium, hard)")
 
 class InterviewStartResponse(BaseModel):
     session_id: str
-    interviewer_message: str # The first question/greeting from the interviewer
+    interviewer_message: str
 
 class InterviewResponseRequest(BaseModel):
     user_text: str = Field(..., description="Interviewee's response as text.")
 
 class InterviewResponse(BaseModel):
-    interviewer_message: str # The interviewer's next response
-    is_interview_done: bool # Flag indicating if the interviewer considers the interview finished
+    interviewer_message: str
+    is_interview_done: bool
 
 class ConversationTurn(BaseModel):
     role: str
@@ -90,28 +71,22 @@ class SummaryResponse(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "alloy" # Default voice
+    voice: str = "default_nvidia_voice" # Default voice for NVIDIA TTS
 
 class TranscribeResponse(BaseModel):
     transcription: str
 
 # --- Dummy Implementations for Aptitude Tutor external modules ---
-# (Place these at the top level or in a separate file if preferred)
+# These are kept for the aptitude section.
 class ConceptExplainer:
     def explain_concept(self, topic: str) -> str:
-        # Simulate an explanation
         return f"This is a detailed explanation of {topic}. It covers its definition, uses, and related concepts."
 
 class ProgressTracker:
     def __init__(self):
-        # This will track global score if needed, but per-user session is used for now.
-        # Keeping it for consistency with original code.
-        self.scores = {} # user_id: {"correct": int, "total": int}
+        self.scores = {}
 
     def update_progress(self, user_id: str, correct_answers: int, total_questions: int):
-        # In this integrated app, we're mostly using aptitude_user_sessions directly.
-        # This dummy updates its internal state but might not be fully synchronized
-        # with aptitude_user_sessions without explicit logic.
         if user_id not in self.scores:
             self.scores[user_id] = {"correct": 0, "total": 0}
         self.scores[user_id]["correct"] = correct_answers
@@ -120,15 +95,29 @@ class ProgressTracker:
     def get_score(self, user_id: str):
         return self.scores.get(user_id, {"correct": 0, "total": 0})
 
-class NvidiaChat:
-    def nvidia_chat(self, history: list) -> str:
-        # Simulate a chat response
-        last_message = history[-1]["content"] if history else "Hello! How can I help?"
-        return f"Acknowledged: '{last_message}'. I can provide more details if needed."
+# --- NVIDIA Chat for Aptitude Tutor (Conceptual) ---
+class NvidiaChatForAptitude:
+    def __init__(self):
+        # Initialize NVIDIA AI Foundation Models chat client here if available
+        # E.g., using NVIDIA NeMo Guardrails or a specific NVIDIA chat endpoint
+        print("NVIDIA Chat for Aptitude initialized (conceptual).")
 
-    def summarise_explanation(self, explanation: str) -> str:
-        # Simulate summarization
-        return f"Summary of: {explanation[:min(len(explanation), 50)]}..."
+    def nvidia_chat(self, history: list) -> str:
+        """
+        Simulates a chat response from an NVIDIA model.
+        For a real implementation, integrate with NVIDIA AI Foundation Models for chat.
+        """
+        last_message = history[-1]["content"] if history else "Hello! How can I help with aptitude?"
+        
+        # --- REPLACE THIS SECTION WITH ACTUAL NVIDIA CHAT API CALLS ---
+        # Example using a conceptual NVIDIA chat API:
+        # headers = {"Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}"}
+        # payload = {"messages": [{"role": m['role'], "content": m['content']} for m in history]}
+        # response = requests.post(os.getenv("NVIDIA_CHAT_API_URL"), headers=headers, json=payload)
+        # return response.json()['choices'][0]['message']['content']
+        # --- END OF PLACEHOLDER SECTION ---
+
+        return f"NVIDIA Aptitude AI acknowledged: '{last_message}'. I can provide more details if needed."
 
 # --- Aptitude Tutor Specific Pydantic Models ---
 class Question(BaseModel):
@@ -140,24 +129,22 @@ class Answer(BaseModel):
     question_id: int
     selected_option_index: int
 
-# Note: ProgressUpdate was in the original snippet but not used in endpoints directly.
-# The endpoint /progress returns the score directly.
-
 class ChatMessage(BaseModel):
-    message: str # User's message to the chat model
+    message: str
 
 class TopicRequest(BaseModel):
     topic: str
 
 # --- Services Initialization ---
-tts_service = OpenAITextToSpeech()
-stt_service = OpenAIAudioTranscriber()
-summarizer = InterviewSummarizer() # For interview summarization
+tts_service = NvidiaTextToSpeech() # Using NVIDIA TTS
+stt_service = OpenAIAudioTranscriber() # Keeping OpenAI STT
+interviewer_logic_class = InterviewLogicGemini # Using Gemini for interviewer logic
+summarizer = InterviewSummarizerGemini() # Using Gemini for summarization
 
 # Aptitude Tutor specific services
 concept_explainer_instance = ConceptExplainer()
-progress_tracker_instance = ProgressTracker() # Dummy progress tracker
-nvidia_chat_instance = NvidiaChat()
+progress_tracker_instance = ProgressTracker()
+nvidia_chat_instance = NvidiaChatForAptitude() # Using NVIDIA Chat for aptitude
 
 # --- Load Aptitude Questions ---
 QUESTIONS_FILE_PATH = os.path.join(os.path.dirname(__file__), "data", "questions.json")
@@ -167,7 +154,7 @@ try:
         questions_data = json.load(f)
 except FileNotFoundError:
     print(f"WARNING: questions.json not found at {QUESTIONS_FILE_PATH}. Aptitude questions will not be available.")
-    questions_data = [] # Ensure it's an empty list if file not found
+    questions_data = []
 except json.JSONDecodeError:
     print(f"ERROR: Could not decode questions.json at {QUESTIONS_FILE_PATH}. Check file format.")
     questions_data = []
@@ -176,19 +163,17 @@ except json.JSONDecodeError:
 # --- General Root Endpoint ---
 @app.get("/")
 async def read_root():
-    return {"message": "Welcome to the AI Assistant Backend! Check /docs for available APIs."}
+    return {"message": "Welcome to the AI Assistant Backend (Gemini & NVIDIA)! Check /docs for available APIs."}
 
 
-# --- INTERVIEWER Endpoints ---
+# --- INTERVIEWER Endpoints (using Gemini) ---
 @app.post("/interview/start", response_model=InterviewStartResponse)
 async def start_interview(request: InterviewStartRequest):
     """
-    Starts a new interview session.
+    Starts a new interview session using Gemini AI.
     """
     session_id = str(uuid.uuid4())
     
-    # Ensure persona_path is safe and relative to the current working directory or a known 'personas' folder
-    # For simplicity, assuming persona_path is directly passed and files are in 'personas/'
     full_persona_file_path = os.path.join(os.path.dirname(__file__), request.persona_path)
 
     try:
@@ -197,11 +182,16 @@ async def start_interview(request: InterviewStartRequest):
         
         full_persona = f"{persona}\nBegin the interview. You are the interviewer and I am the interviewee. Please be very concise as the interviewer in your answers but do not skip the formalities. Use this opportunity to pick up on interviewee social cues. Keep in mind time is limited and make this interview {request.difficulty}"
         
-        interview_logic = InterviewLogic(full_persona)
+        interview_logic = interviewer_logic_class(full_persona) # Use Gemini Logic
         
-        # Get the first message from the interviewer by passing an empty initial user input
-        # The InterviewLogic expects a user input, so for the first message, we send an implicit start signal
-        first_interviewer_message = await interview_logic.get_interviewer_response("Hello, let's start the interview.") 
+        # The first message from the AI is generated by its initial setup, as handled in InterviewLogicGemini's __init__
+        # and first call to get_interviewer_response.
+        # It's crucial to call get_interviewer_response once without prior user_text
+        # to trigger the AI's first persona-based greeting/question.
+        
+        # Call with an empty string or a generic start signal if `get_interviewer_response`
+        # handles the initial AI-driven greeting logic.
+        first_interviewer_message = await interview_logic.get_interviewer_response("") 
         
         interview_sessions[session_id] = interview_logic
         return InterviewStartResponse(
@@ -216,21 +206,20 @@ async def start_interview(request: InterviewStartRequest):
 @app.post("/interview/{session_id}/respond", response_model=InterviewResponse)
 async def respond_to_interview(session_id: str, request: InterviewResponseRequest):
     """
-    Sends the interviewee's response and gets the interviewer's next message.
+    Sends the interviewee's response and gets the interviewer's next message using Gemini AI.
     """
     interview_logic = interview_sessions.get(session_id)
     if not interview_logic:
         raise HTTPException(status_code=404, detail="Interview session not found.")
     
-    if interview_logic.is_done_flag: # Check if interview was marked done previously
+    if interview_logic.is_done_flag:
         raise HTTPException(status_code=400, detail="Interview is already finished. Please start a new session or end this one to summarize.")
 
     try:
         interviewer_message = await interview_logic.get_interviewer_response(request.user_text)
         
-        # Check if the interviewer considers the interview done based on the last response
         is_done = await interview_logic.check_if_done(interviewer_message)
-        interview_logic.is_done_flag = is_done # Update the flag in the session state
+        interview_logic.is_done_flag = is_done
 
         return InterviewResponse(
             interviewer_message=interviewer_message,
@@ -254,13 +243,12 @@ async def get_interview_history(session_id: str):
 @app.post("/interview/{session_id}/end", response_model=SummaryResponse)
 async def end_interview_and_summarize(session_id: str, request: SummarizeRequest):
     """
-    Explicitly ends an interview and generates a summary based on predefined criteria.
+    Explicitly ends an interview and generates a summary using Gemini AI based on predefined criteria.
     """
     interview_logic = interview_sessions.get(session_id)
     if not interview_logic:
         raise HTTPException(status_code=404, detail="Interview session not found.")
     
-    # Ensure criteria_path is safe and relative to the current working directory or a known 'guidelines' folder
     full_criteria_file_path = os.path.join(os.path.dirname(__file__), request.criteria_path)
 
     try:
@@ -271,7 +259,6 @@ async def end_interview_and_summarize(session_id: str, request: SummarizeRequest
             summarizer.summarize_interview, interview_logic.history, criteria
         )
         
-        # Clean up session (optional, depending on desired behavior)
         del interview_sessions[session_id]
         
         return SummaryResponse(summary=summary_text)
@@ -280,18 +267,18 @@ async def end_interview_and_summarize(session_id: str, request: SummarizeRequest
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to summarize interview: {e}")
 
-# --- UTILITY Endpoints (TTS and STT) ---
+# --- UTILITY Endpoints (NVIDIA TTS and OpenAI STT) ---
 
 @app.post("/tts", response_class=io.BytesIO) # Return raw audio bytes
 async def text_to_speech_endpoint(request: TTSRequest):
     """
-    Converts text to speech and returns the audio content.
+    Converts text to speech using NVIDIA TTS and returns the audio content.
     """
     try:
         audio_buffer = await tts_service.text_to_speech(request.text, request.voice)
         return audio_buffer
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Text-to-speech failed: {e}")
+        raise HTTPException(status_code=500, detail=f"NVIDIA Text-to-speech failed: {e}")
 
 @app.post("/transcribe/upload", response_model=TranscribeResponse)
 async def transcribe_uploaded_audio_endpoint(audio_file: UploadFile = File(...)):
@@ -308,23 +295,22 @@ async def transcribe_uploaded_audio_endpoint(audio_file: UploadFile = File(...))
         )
         return TranscribeResponse(transcription=transcription_text)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Audio transcription failed: {e}")
+        raise HTTPException(status_code=500, detail=f"OpenAI Audio transcription failed: {e}")
 
 @app.post("/transcribe/record", response_model=TranscribeResponse)
 async def transcribe_recorded_audio_endpoint():
     """
-    Records audio from the microphone until silence and transcribes it.
-    This endpoint is blocking due to PyAudio. In a production setting,
-    consider running this in a dedicated worker process or a separate service.
+    Records audio from the microphone until silence and transcribes it using OpenAI Whisper.
+    This endpoint is blocking due to PyAudio.
     """
     try:
-        # Run the blocking PyAudio recording in a separate thread
         frames, audio_format, channels, rate = await asyncio.to_thread(record_audio_blocking)
         
         if not frames:
             raise HTTPException(status_code=400, detail="No audio recorded.")
 
         audio_buffer = io.BytesIO()
+        import pyaudio, wave # Import locally as needed if not used elsewhere
         with wave.open(audio_buffer, 'wb') as wf:
             wf.setnchannels(channels)
             wf.setsampwidth(pyaudio.PyAudio().get_sample_size(audio_format))
@@ -347,7 +333,6 @@ async def get_random_aptitude_question():
         raise HTTPException(status_code=404, detail="No aptitude questions available. Check server logs.")
     
     question = random.choice(questions_data)
-    # Exclude the correct_option_index from the response for the client
     return Question(
         id=question["id"],
         question=question["question"],
@@ -368,14 +353,12 @@ async def submit_aptitude_answer(answer: Answer, user_id: str = "default_user"):
 
     user_session = aptitude_user_sessions.get(user_id)
     if not user_session:
-        # Initialize session for new user if needed, or handle as error
         user_session = aptitude_user_sessions[user_id] = {"score": {"correct": 0, "total": 0}, "chat_history": []}
 
     user_session["score"]["total"] += 1
     if is_correct:
         user_session["score"]["correct"] += 1
     
-    # Update global dummy progress tracker
     progress_tracker_instance.update_progress(user_id, user_session["score"]["correct"], user_session["score"]["total"])
 
     return {"is_correct": is_correct, "correct_option_index": question["correct_option_index"]}
@@ -404,14 +387,12 @@ async def explain_aptitude_concept_endpoint(request: TopicRequest, user_id: str 
     if not request.topic:
         raise HTTPException(status_code=400, detail="Topic cannot be empty.")
 
-    # Concept Explainer might be synchronous, run in thread pool
     explanation = await asyncio.to_thread(concept_explainer_instance.explain_concept, request.topic)
 
     user_session = aptitude_user_sessions.get(user_id)
     if not user_session:
         user_session = aptitude_user_sessions[user_id] = {"score": {"correct": 0, "total": 0}, "chat_history": []}
     
-    # Add to chat history (optional, if you want this in a separate chat context)
     user_session["chat_history"].extend([
         {"role": "user", "content": f"Explain: {request.topic}"},
         {"role": "assistant", "content": explanation}
@@ -429,7 +410,7 @@ async def get_aptitude_chat_history(user_id: str = "default_user"):
 
 @app.post("/aptitude/chat")
 async def chat_with_aptitude_ai(message: ChatMessage, user_id: str = "default_user"):
-    """Sends a message to the Nvidia chat model (or a generic chat model) and returns a response for aptitude-related queries."""
+    """Sends a message to the NVIDIA chat model (conceptual) for aptitude-related queries."""
     if not message.message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
@@ -439,7 +420,6 @@ async def chat_with_aptitude_ai(message: ChatMessage, user_id: str = "default_us
 
     user_session["chat_history"].append({"role": "user", "content": message.message})
     
-    # Nvidia chat call is synchronous, run in thread pool
     response = await asyncio.to_thread(nvidia_chat_instance.nvidia_chat, user_session["chat_history"])
     user_session["chat_history"].append({"role": "assistant", "content": response})
     
