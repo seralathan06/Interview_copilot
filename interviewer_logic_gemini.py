@@ -96,39 +96,3 @@ class InterviewLogicNVIDIA:
             print(f"Error checking if done with NVIDIA API: {e}")
             # Default to not done if there's an error
             return False
-
-# Example of how to use it (for testing purposes, if you have an event loop running)
-async def main():
-    persona_description = "You are a friendly technical recruiter for a software company, interviewing candidates for a Junior Python Developer role. You will start by asking about their experience with Python."
-    interview_logic = InterviewLogicNVIDIA(persona=persona_description)
-
-    # Get the first question from the AI (triggered by the initial 'user' message in init)
-    first_question = await interview_logic.get_interviewer_response(user_text="")
-    print(f"Interviewer: {first_question}")
-
-    # Simulate user response
-    user_response_1 = "Hi, thanks! I've been coding in Python for about two years, mainly on personal projects and some open-source contributions. I'm comfortable with data structures and algorithms."
-    print(f"You: {user_response_1}")
-    interviewer_response_1 = await interview_logic.get_interviewer_response(user_text=user_response_1)
-    print(f"Interviewer: {interviewer_response_1}")
-
-    # Check if done
-    done_status = await interview_logic.check_if_done(user_response_1)
-    print(f"Is interview done? {done_status}")
-
-    user_response_2 = "Thanks, I think that covers all my questions for today. I'm ready to finish."
-    print(f"You: {user_response_2}")
-    interviewer_response_2 = await interview_logic.get_interviewer_response(user_text=user_response_2)
-    print(f"Interviewer: {interviewer_response_2}")
-
-    done_status_2 = await interview_logic.check_if_done(user_response_2)
-    print(f"Is interview done? {done_status_2}")
-
-
-if __name__ == "__main__":
-    # To run this, you'll typically need to be inside an async function or use asyncio.run()
-    # For a quick test, you can run it like this:
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Interview simulation ended.")
